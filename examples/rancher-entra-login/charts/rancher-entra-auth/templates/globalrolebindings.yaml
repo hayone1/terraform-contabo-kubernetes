@@ -1,0 +1,20 @@
+# Rancher global roles for the Entra ID groups. The names come from the
+# principal, so a changed group list replaces only the changed bindings.
+{{- range .Values.adminPrincipals }}
+---
+apiVersion: management.cattle.io/v3
+kind: GlobalRoleBinding
+metadata:
+  name: entra-admin-{{ . | sha256sum | trunc 10 }}
+globalRoleName: admin
+groupPrincipalName: {{ . | quote }}
+{{- end }}
+{{- range .Values.userPrincipals }}
+---
+apiVersion: management.cattle.io/v3
+kind: GlobalRoleBinding
+metadata:
+  name: entra-user-{{ . | sha256sum | trunc 10 }}
+globalRoleName: user
+groupPrincipalName: {{ . | quote }}
+{{- end }}

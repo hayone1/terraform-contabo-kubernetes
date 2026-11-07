@@ -1,0 +1,4 @@
+cluster_name = "demo"
+region       = "EU"
+product_id   = "V91"
+admin_cidrs  = []

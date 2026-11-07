@@ -1,0 +1,167 @@
+# A Headscale server for the live test. Headscale serves HTTPS itself on port
+# 8443 with a certificate from cert-manager, because Tailscale clients need
+# the HTTP upgrade "tailscale-control-protocol", which the Envoy of the
+# Gateway does not pass on. The data (SQLite and the Noise key) lives on a
+# Longhorn volume.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: headscale
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: headscale
+  namespace: headscale
+spec:
+  secretName: headscale-tls
+  dnsNames: ["${host}"]
+  issuerRef:
+    kind: ClusterIssuer
+    name: letsencrypt-production
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: headscale
+  namespace: headscale
+data:
+  config.yaml: |
+    server_url: ${url}
+    listen_addr: 0.0.0.0:8443
+    metrics_listen_addr: 0.0.0.0:9090
+    grpc_listen_addr: 127.0.0.1:50443
+    grpc_allow_insecure: false
+    noise:
+      private_key_path: /var/lib/headscale/noise_private.key
+    prefixes:
+      v4: 100.64.0.0/10
+      v6: fd7a:115c:a1e0::/48
+      allocation: sequential
+    derp:
+      server:
+        enabled: false
+      urls:
+        - https://controlplane.tailscale.com/derpmap/default
+      auto_update_enabled: true
+      update_frequency: 3h
+    disable_check_updates: true
+    database:
+      type: sqlite
+      sqlite:
+        path: /var/lib/headscale/db.sqlite
+        write_ahead_log: true
+    tls_cert_path: /etc/headscale-tls/tls.crt
+    tls_key_path: /etc/headscale-tls/tls.key
+    log:
+      level: info
+      format: text
+    policy:
+      mode: database
+    dns:
+      magic_dns: true
+      base_domain: ${base_domain}
+      override_local_dns: false
+      nameservers:
+        global: []
+    unix_socket: /var/run/headscale/headscale.sock
+    unix_socket_permission: "0770"
+    logtail:
+      enabled: false
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: headscale-data
+  namespace: headscale
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: headscale
+  namespace: headscale
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: headscale
+  template:
+    metadata:
+      labels:
+        app: headscale
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: headscale
+          image: docker.io/headscale/headscale:${version}
+          args: ["serve"]
+          ports:
+            - name: https
+              containerPort: 8443
+            - name: metrics
+              containerPort: 9090
+          readinessProbe:
+            tcpSocket:
+              port: 8443
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/headscale
+              readOnly: true
+            - name: tls
+              mountPath: /etc/headscale-tls
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/headscale
+            - name: run
+              mountPath: /var/run/headscale
+      volumes:
+        - name: config
+          configMap:
+            name: headscale
+        - name: tls
+          secret:
+            secretName: headscale-tls
+        - name: data
+          persistentVolumeClaim:
+            claimName: headscale-data
+        - name: run
+          emptyDir: {}
+---
+# Cilium gives the service the public addresses of the ingress nodes, and
+# external-dns creates the DNS record.
+apiVersion: v1
+kind: Service
+metadata:
+  name: headscale
+  namespace: headscale
+  annotations:
+    external-dns.kubernetes.io/hostname: ${host}
+    io.cilium.nodeipam/match-node-labels: node.kubernetes.io/ingress=true
+spec:
+  type: LoadBalancer
+  selector:
+    app: headscale
+  ports:
+    - name: https
+      port: 8443
+      targetPort: 8443

@@ -1,0 +1,33 @@
+# The Terraform example sets every value. See the README of the example.
+
+# The rotation job logs in to Entra ID as this app (workload identity).
+rotatorClientId: ""
+# The Entra ID tenant of both app registrations.
+tenantId: ""
+# A checksum of the chart files. Terraform sets it, so that every change of
+# the chart upgrades the release.
+chartChecksum: ""
+serviceAccountName: entra-secret-rotator
+
+# The app registration that people log in to.
+rancherClientId: ""
+rancherUrl: ""
+
+# Rancher principals, for example "azuread_group://<object id>".
+adminPrincipals: []
+userPrincipals: []
+
+secret:
+  displayName: rancher-entra-auth
+  lifetimeDays: 30
+  renewBeforeDays: 10
+
+schedule: "17 3 * * *"
+image: docker.io/alpine/k8s:1.36.6@sha256:182daef60c9413848a914435a2c37ccd3088870e2ea989e7667687a109945c28
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    memory: 128Mi

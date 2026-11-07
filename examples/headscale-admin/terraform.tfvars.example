@@ -1,0 +1,9 @@
+product_id     = "V91"
+headscale_url  = "https://headscale.example.com"
+tailnet_domain = "tailnet.example.com"
+
+# Let Terraform own the Headscale policy. The server needs
+# policy.mode = "database". Put your current policy (as JSON without
+# comments) into base_policy, or its rules are lost.
+manage_policy = false
+# base_policy = file("policy.json")

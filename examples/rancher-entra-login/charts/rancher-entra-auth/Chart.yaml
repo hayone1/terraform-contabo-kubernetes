@@ -1,0 +1,6 @@
+apiVersion: v2
+name: rancher-entra-auth
+description: Turns on the Microsoft Entra ID login of Rancher and rotates its client secret with workload identity.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

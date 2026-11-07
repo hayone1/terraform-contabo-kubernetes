@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "tailscale-docs": {
+      "type": "http",
+      "url": "https://tailscale.mcp.kapa.ai/"
+    }
+  }
+}

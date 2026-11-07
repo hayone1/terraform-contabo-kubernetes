@@ -1,0 +1,7 @@
+product_id     = "V91"
+tailnet_domain = "tail1234.ts.net"
+
+# Let Terraform own the tailnet policy. Put your current policy (as JSON
+# without comments) into base_policy, or its rules are lost.
+manage_tailnet = false
+# base_policy  = file("policy.json")

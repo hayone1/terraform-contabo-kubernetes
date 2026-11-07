@@ -1,0 +1,16 @@
+*.env
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+# The examples are root configurations, so their lock files are committed.
+!examples/*/.terraform.lock.hcl
+crash.log
+kubeconfig
+talosconfig
+*_override.tf
+# Local working files: notes with real ids, local test data, editor settings.
+.notes/
+.tfdata/
+.vscode/
+.idea/

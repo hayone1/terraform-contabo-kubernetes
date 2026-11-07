@@ -1,0 +1,5 @@
+# Keep LF line endings on every platform. The rotation job of
+# examples/rancher-entra-login runs rotate.sh with busybox sh, which stops on
+# CRLF line endings. LF everywhere also keeps the chart checksum the same on
+# Windows, macOS and Linux.
+* text=auto eol=lf

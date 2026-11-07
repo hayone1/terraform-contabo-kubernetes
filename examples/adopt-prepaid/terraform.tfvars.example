@@ -1,0 +1,12 @@
+cluster_name = "prod"
+region       = "EU"
+
+control_plane_instance_ids = {
+  a = "200000001"
+  b = "200000002"
+  c = "200000003"
+}
+
+worker_product_id = "V91"
+worker_count      = 2
+admin_cidrs       = []

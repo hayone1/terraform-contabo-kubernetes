@@ -1,0 +1,18 @@
+kubeconfig_path = "~/.kube/prod.yaml"
+tenant_id       = "9a31492d-f25a-451f-bb1b-3f258ce03363"
+
+# The issuer_url output of modules/workload-identity.
+issuer_url = "https://eu2.contabostorage.com/73c52bffc2604fccac2b286674b4bd45:prod-oidc"
+
+hostname = "rancher.example.com"
+
+ingress = {
+  class_name     = "traefik"
+  cluster_issuer = "letsencrypt-production"
+}
+
+admin_group_object_ids = ["3d1c5a7e-9b2f-4c1d-8e6a-5f0b2c4d6e8f"]
+
+rancher = {
+  replicas = 3
+}

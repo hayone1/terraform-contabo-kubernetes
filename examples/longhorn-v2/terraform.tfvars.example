@@ -1,0 +1,6 @@
+cluster_name             = "demo"
+region                   = "EU"
+control_plane_product_id = "V159"
+worker_product_id        = "V8"
+v2_size                  = "80GiB"
+admin_cidrs              = []

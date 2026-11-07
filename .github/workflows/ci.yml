@@ -1,0 +1,66 @@
+# Offline checks for every pull request. The checks need no cloud account.
+# The live tests in tests/live need real accounts and run by hand.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.14"
+          terraform_wrapper: false
+
+      - uses: terraform-linters/setup-tflint@v4
+
+      - name: Check the format
+        run: terraform fmt -check -recursive -diff
+
+      - name: Validate the module and the examples
+        run: |
+          for dir in . modules/workload-identity examples/minimal examples/adopt-prepaid examples/headlamp-entra-login examples/rancher-entra-login examples/tailscale-admin examples/headscale-admin examples/longhorn-v2; do
+            echo "::group::$dir"
+            terraform -chdir="$dir" init -backend=false -input=false
+            terraform -chdir="$dir" validate
+            echo "::endgroup::"
+          done
+
+      - name: Lint
+        run: |
+          tflint --init
+          for dir in . modules/workload-identity examples/minimal examples/adopt-prepaid examples/headlamp-entra-login examples/rancher-entra-login examples/tailscale-admin examples/headscale-admin examples/longhorn-v2; do
+            tflint --chdir="$dir" --config="$GITHUB_WORKSPACE/.tflint.hcl"
+          done
+
+      - name: Test the modules with mocked providers
+        run: |
+          terraform test
+          terraform -chdir=modules/workload-identity test
+
+  charts-and-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+
+      - name: Lint the local charts
+        run: |
+          helm lint examples/rancher-entra-login/charts/rancher-entra-auth \
+            --set rotatorClientId=a,rancherClientId=b,rancherUrl=https://rancher.example.com
+          helm lint tests/live/examples/platform/charts/cluster-issuers
+
+      - name: Check the shell scripts
+        run: |
+          shellcheck -s sh examples/rancher-entra-login/charts/rancher-entra-auth/files/rotate.sh
+          shellcheck -x scripts/*.sh tests/live/workload-identity/*.sh tests/live/cluster/*.sh tests/live/ha/*.sh tests/live/examples/*.sh
