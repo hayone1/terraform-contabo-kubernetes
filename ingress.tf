@@ -158,7 +158,7 @@ data "helm_template" "external_dns" {
 locals {
   # Talos applies every document of an inline manifest, also Helm hooks, so
   # the module drops the hooks.
-  cert_manager_manifest = var.cert_manager.enabled ? join("\n---\n", concat(
+  cert_manager_documents = var.cert_manager.enabled ? concat(
     [yamlencode({ apiVersion = "v1", kind = "Namespace", metadata = { name = "cert-manager" } })],
     [local.dns_credentials_secret["cert-manager"]],
     [for document in split("\n---\n", data.helm_template.cert_manager[0].manifest) : document if !strcontains(document, "helm.sh/hook")],
@@ -187,7 +187,7 @@ locals {
           }
         }
     })],
-  )) : ""
+  ) : []
 
   external_dns_manifest = var.external_dns.enabled ? join("\n---\n", concat(
     [yamlencode({ apiVersion = "v1", kind = "Namespace", metadata = { name = "external-dns" } })],
@@ -198,7 +198,7 @@ locals {
   # The shared Gateway "public" in the namespace "gateway". Routes from every
   # namespace can use the Gateway. external-dns points the names of the routes
   # to the public addresses of the ingress nodes.
-  shared_gateway_manifest = local.shared_gateway ? join("\n---\n", [
+  shared_gateway_documents = local.shared_gateway ? [
     yamlencode({ apiVersion = "v1", kind = "Namespace", metadata = { name = "gateway" } }),
     yamlencode({
       apiVersion = "cert-manager.io/v1"
@@ -241,13 +241,33 @@ locals {
         ])
       }
     }),
-  ]) : ""
+  ] : []
+
+  # The cert-manager webhook checks every cert-manager.io resource. Talos
+  # applies the inline manifests in the order of their names and stops at the
+  # first error that is not a validation error. On a new cluster, a
+  # Certificate in the manifest "cert-manager" therefore blocked every later
+  # manifest, also the cloud controller manager, which must run before any
+  # pod (and so the webhook) can start. The cert-manager.io resources go into
+  # the manifest "zz-cert-manager-resources", which Talos applies last.
+  cert_manager_resource_documents = [
+    for document in concat(local.cert_manager_documents, local.shared_gateway_documents) : document
+    if can(regex("(?m)^\"?apiVersion\"?: \"?cert-manager\\.io/", document))
+  ]
+  cert_manager_manifest = join("\n---\n", [
+    for document in local.cert_manager_documents : document if !contains(local.cert_manager_resource_documents, document)
+  ])
+  shared_gateway_manifest = join("\n---\n", [
+    for document in local.shared_gateway_documents : document if !contains(local.cert_manager_resource_documents, document)
+  ])
+  cert_manager_resources_manifest = join("\n---\n", local.cert_manager_resource_documents)
 
   ingress_manifests = concat(
     local.gateway_enabled ? [{ name = "gateway-api-crds", contents = data.http.gateway_api_crds[0].response_body }] : [],
     var.cert_manager.enabled ? [{ name = "cert-manager", contents = local.cert_manager_manifest }] : [],
     var.external_dns.enabled ? [{ name = "external-dns", contents = local.external_dns_manifest }] : [],
     local.shared_gateway ? [{ name = "gateway", contents = local.shared_gateway_manifest }] : [],
+    var.cert_manager.enabled ? [{ name = "zz-cert-manager-resources", contents = local.cert_manager_resources_manifest }] : [],
   )
 
   # Cilium settings for the Gateway API in host network mode: Envoy binds

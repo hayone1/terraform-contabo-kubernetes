@@ -449,6 +449,19 @@ run "shared_network_excludes_other_servers" {
     condition     = strcontains(join("\n", local.node_patches["cp-a"]), "\"except\": \"10.0.0.0/22\"")
     error_message = "In an existing network, the open API rule must exclude the private network."
   }
+  assert {
+    # Talos applies an "except" to every subnet of a rule. A rule with an
+    # "except" must therefore hold only 0.0.0.0/0, or the nodes lose access.
+    condition = alltrue([
+      for document in local.node_patches["cp-a"] :
+      !strcontains(document, "\"except\"") || (strcontains(document, "-any\"") && length(regexall("\"subnet\":", document)) == 1)
+    ])
+    error_message = "A rule with an except must be a separate -any rule with 0.0.0.0/0 only."
+  }
+  assert {
+    condition     = strcontains(join("\n", local.node_patches["cp-a"]), "\"name\": \"apid\"") && strcontains(join("\n", local.node_patches["cp-a"]), "\"name\": \"apid-any\"")
+    error_message = "The Talos API needs a rule for the nodes and a separate rule for everybody."
+  }
 }
 
 run "new_instances_order_private_networking" {
@@ -512,6 +525,20 @@ run "gateway_with_certificates_and_dns" {
   assert {
     condition     = local.inline_manifests[0].name == "gateway-api-crds"
     error_message = "The Gateway API CRDs must come before Cilium."
+  }
+  assert {
+    # Talos applies inline manifests sorted by name and stops at a webhook error.
+    condition     = sort([for manifest in local.inline_manifests : manifest.name])[length(local.inline_manifests) - 1] == "zz-cert-manager-resources"
+    error_message = "The cert-manager.io resources must be in the manifest that Talos applies last."
+  }
+  assert {
+    condition = (
+      !can(regex("(?m)^\"?apiVersion\"?: \"?cert-manager\\.io/", local.cert_manager_manifest)) &&
+      !can(regex("(?m)^\"?apiVersion\"?: \"?cert-manager\\.io/", local.shared_gateway_manifest)) &&
+      strcontains(local.cert_manager_resources_manifest, "\"ClusterIssuer\"") &&
+      strcontains(local.cert_manager_resources_manifest, "wildcard-tls")
+    )
+    error_message = "Every cert-manager.io resource must move from the cert-manager and gateway manifests into zz-cert-manager-resources."
   }
   assert {
     condition     = strcontains(join("\n", local.node_patches["cp-1"]), "\"node.kubernetes.io/ingress\": \"true\"")

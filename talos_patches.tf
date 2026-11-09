@@ -158,25 +158,40 @@ locals {
         }),
         yamlencode({ apiVersion = "v1alpha1", kind = "NetworkDefaultActionConfig", ingress = "block" }),
       ],
-      [for rule in local.firewall_rules[key] : yamlencode({
-        apiVersion = "v1alpha1"
-        kind       = "NetworkRuleConfig"
-        name       = rule.name
-        # Talos wants single ports as numbers and ranges as strings. Terraform
-        # turns a list with both kinds into strings, so every port is decoded
-        # on its own.
-        portSelector = {
-          ports    = [for port in rule.ports : jsondecode(can(tonumber(port)) ? tostring(port) : jsonencode(port))]
-          protocol = rule.protocol
-        }
-        # The Contabo firewall allows the whole private network. An existing
-        # network can hold other servers, so "everybody" then excludes the
-        # private network, and only the nodes (trusted_cidrs) stay allowed.
-        ingress = [for subnet in distinct(rule.subnets) : merge(
-          { subnet = subnet },
-          subnet == "0.0.0.0/0" && var.private_network.existing_id != null ? { except = local.private_network_cidr } : {},
-        )]
-      })],
+      # The Contabo firewall allows the whole private network. An existing
+      # network can hold other servers, so "everybody" (0.0.0.0/0) then
+      # excludes the private network. Talos applies an "except" to every
+      # subnet of a rule, so the excluded "everybody" gets its own rule
+      # "<name>-any", and the nodes (trusted_cidrs) keep their access.
+      flatten([for rule in local.firewall_rules[key] : [
+        for part in [
+          {
+            name    = rule.name
+            subnets = [for subnet in distinct(rule.subnets) : subnet if !(subnet == "0.0.0.0/0" && var.private_network.existing_id != null)]
+            except  = null
+          },
+          {
+            name    = "${rule.name}-any"
+            subnets = contains(rule.subnets, "0.0.0.0/0") && var.private_network.existing_id != null ? ["0.0.0.0/0"] : []
+            except  = local.private_network_cidr
+          },
+          ] : yamlencode({
+            apiVersion = "v1alpha1"
+            kind       = "NetworkRuleConfig"
+            name       = part.name
+            # Talos wants single ports as numbers and ranges as strings.
+            # Terraform turns a list with both kinds into strings, so every
+            # port is decoded on its own.
+            portSelector = {
+              ports    = [for port in rule.ports : jsondecode(can(tonumber(port)) ? tostring(port) : jsonencode(port))]
+              protocol = rule.protocol
+            }
+            ingress = [for subnet in part.subnets : merge(
+              { subnet = subnet },
+              part.except == null ? {} : { except = part.except },
+            )]
+        }) if length(part.subnets) > 0
+      ]]),
       contains(local.longhorn_keys, key) ? local.longhorn_volume_patches : [],
       contains(local.tailscale_keys, key) ? [local.tailscale_patches[key]] : [],
       var.talos.discovery_service ? [] : [
